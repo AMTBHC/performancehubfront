@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversor Word a HTML - Reportes Performance</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 900px; margin: 40px auto; padding: 20px; background-color: #f4f7f6; }
+        .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { color: #003366; text-align: center; border-bottom: 2px solid #003366; padding-bottom: 10px; }
+        .file-input { margin: 20px 0; padding: 20px; border: 2px dashed #ccc; text-align: center; cursor: pointer; }
+        
+        /* Estilo para el botón de descarga */
+        #btnDescargar {
+            display: none; /* Oculto al inicio */
+            background-color: #28a745;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px auto;
+            display: none; 
+        }
+        #btnDescargar:hover { background-color: #218838; }
+
+        #output { margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; }
+        #output h2 { color: #0056b3; margin-top: 25px; border-left: 5px solid #0056b3; padding-left: 10px; }
+        #output table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+        #output table, #output th, #output td { border: 1px solid #ddd; padding: 12px; }
+        #output th { background-color: #f2f2f2; }
+        #output img { max-width: 100%; height: auto; display: block; margin: 20px auto; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Conversor de Informes .docx</h1>
+    <div class="file-input">
+        <input type="file" id="upload" accept=".docx" />
+        <p>Selecciona el archivo Word de Performance</p>
+    </div>
+
+    <div style="text-align: center;">
+        <button id="btnDescargar">Descargar Informe en HTML</button>
+    </div>
+
+    <div id="output">
+        <p style="color: #999; text-align: center;">El contenido aparecerá aquí después de subir el archivo...</p>
+    </div>
+</div>
+
+<script>
+    let htmlResultado = ""; // Variable global para guardar el contenido
+
+    document.getElementById('upload').addEventListener('change', function(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            const arrayBuffer = e.target.result;
+            
+            const options = {
+                styleMap: [
+                    "p[style-name='Subttulo'] => h2:fresh",
+                    "p[style-name='TtuloTDC'] => h3.toc-title",
+                    "p[style-name='TDC1'] => li.toc-level-1",
+                    "b => strong",
+                    "i => em"
+                ],
+                convertImage: mammoth.images.inline(function(element) {
+                    return element.read("base64").then(function(imageBuffer) {
+                        return {
+                            src: "data:" + element.contentType + ";base64," + imageBuffer
+                        };
+                    });
+                })
+            };
+
+            mammoth.convertToHtml({arrayBuffer: arrayBuffer}, options)
+                .then(displayResult)
+                .catch(handleError);
+        };
+
+        reader.readAsArrayBuffer(file);
+    });
+
+    function displayResult(result) {
+        const outputElement = document.getElementById('output');
+        const btn = document.getElementById('btnDescargar');
+        
+        let cleanHtml = result.value.replace(/<p><\/p>/g, '');
+        
+        // Guardamos el HTML para la descarga
+        htmlResultado = cleanHtml;
+        
+        // Mostramos en pantalla
+        outputElement.innerHTML = cleanHtml;
+        
+        // Mostramos el botón de descarga
+        btn.style.display = "inline-block";
+
+        if (result.messages.length > 0) {
+            console.log("Notas de conversión:", result.messages);
+        }
+    }
+
+    // FUNCIÓN DE DESCARGA
+    document.getElementById('btnDescargar').addEventListener('click', function() {
+        if (!htmlResultado) return;
+
+        // Estructura básica para que el archivo descargado se vea bien
+        const htmlCompleto = htmlResultado;
+
+        const blob = new Blob([htmlCompleto], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        
+        a.href = url;
+        a.download = "informe_performance.html";
+        document.body.appendChild(a);
+        a.click();
+        
+        // Limpieza
+        setTimeout(() => {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }, 0);
+    });
+
+    function handleError(err) {
+        console.error("Error al convertir:", err);
+        alert("Hubo un error procesando el archivo Word.");
+    }
+</script>
+
+</body>
+</html>
