@@ -53,26 +53,37 @@ const Generadores = () => {
   };
 
   // --- Lógica K6 ---
-  const generateK6 = () => `import http from 'k6/http';
+  const generateK6 = () => {
+    // En modo Jenkins, k6 lee los valores inyectados por el pipeline (-e VUS, -e DURATION).
+    // El valor de la UI queda como respaldo si no llega la variable de entorno.
+    const vusExpr =
+      modoEjecucion === "jenkins" ? `Number(__ENV.VUS) || ${k6Vus}` : `${k6Vus}`;
+    const durExpr =
+      modoEjecucion === "jenkins"
+        ? `(__ENV.DURATION || '${duration}') + 's'`
+        : `'${duration}s'`;
+
+    return `import http from 'k6/http';
 import { sleep, check } from 'k6';
 
 export const options = {
-  vus: ${k6Vus},
-  duration: '${duration}s',
+  vus: ${vusExpr},
+  duration: ${durExpr},
   thresholds: {
-    http_req_duration: ['p(95)<500'], 
+    http_req_duration: ['p(95)<500'],
   },
 };
 
 export default function () {
   const res = http.get('${url}');
-  
+
   check(res, {
     'status is 200': (r) => r.status === 200,
   });
 
   sleep(1);
 }`;
+  };
 
   // --- Lógica JMeter ---
   const generateJMeter = () => {
@@ -369,8 +380,8 @@ export default function () {
             </button>
           </div>
           
-          {/* Nuevo Toggle: Local vs Jenkins */}
-          {tool === "jmeter" && (
+          {/* Toggle: Local vs Jenkins (aplica a k6 y JMeter) */}
+          {(
              <div className="flex bg-slate-100 p-1 rounded-xl scale-90 origin-right">
               <button
                 onClick={() => setModoEjecucion("local")}
