@@ -38,11 +38,11 @@ const [isAnalyzing, setIsAnalyzing] = useState(false);      // Para el estado de
 
   const projectName = activeProject?.name;
 
-  const handleIAAnalysis = async (buildId) => {
+  const handleIAAnalysis = async (buildId, tool = "jmeter") => {
     setIsAnalyzing(true);
     try {
       const response = await fetch(
-        `http://localhost:8000/api/performance/analizar?project=${projectName}&build=${buildId}`,
+        `http://localhost:8000/api/performance/analizar?project=${projectName}&build=${buildId}&tool=${tool}`,
       );
       const data = await response.json();
       if (data.analisis) {
@@ -449,7 +449,7 @@ const [isAnalyzing, setIsAnalyzing] = useState(false);      // Para el estado de
 
                           {/* Botón de IA (Llama a la API) */}
                           <button
-                            onClick={() => handleIAAnalysis(run.id)}
+                            onClick={() => handleIAAnalysis(run.id, run.tool)}
                             disabled={isAnalyzing}
                             className="bg-purple-100 text-purple-700 px-3 py-1 rounded-lg font-black text-[10px] hover:bg-purple-200 transition-all flex items-center gap-1"
                           >
