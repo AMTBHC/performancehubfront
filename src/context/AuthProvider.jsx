@@ -10,7 +10,7 @@ const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios.defaults.baseURL = 'http://187.33.156.192/api';
+    axios.defaults.baseURL = 'http://127.0.0.1:8000/api';
     
     const initAuth = async () => {
       if (token) {
