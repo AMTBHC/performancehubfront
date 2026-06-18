@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import axios from "axios";
 import {
   Settings,
   Copy,
@@ -7,6 +8,8 @@ import {
   Globe,
   Download,
   Edit3,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 
 const Generadores = () => {
@@ -18,6 +21,13 @@ const Generadores = () => {
 
   // Estado para K6 (Simple)
   const [k6Vus, setK6Vus] = useState(10);
+
+  // --- IA: generación de script desde historias de usuario ---
+  const [metodoGen, setMetodoGen] = useState("manual"); // "manual" | "ia"
+  const [historias, setHistorias] = useState("");
+  const [iaScript, setIaScript] = useState("");
+  const [loadingIA, setLoadingIA] = useState(false);
+  const [iaError, setIaError] = useState(null);
 
   // Estado para JMeter (Detallado)
   const [jmeterConfig, setJmeterConfig] = useState({
@@ -315,26 +325,67 @@ export default function () {
 </jmeterTestPlan>`;
   };
 
+  // Código que se muestra / copia / descarga según el método activo.
+  const getCurrentCode = () => {
+    if (metodoGen === "ia") return iaScript;
+    return tool === "k6" ? generateK6() : generateJMeter();
+  };
+
+  // Pide a la IA que genere un script de k6 a partir de las historias de usuario.
+  const generarConIA = async () => {
+    if (!historias || historias.trim().length < 10) {
+      setIaError(
+        "Escribe al menos una historia de usuario para que la IA pueda trabajar.",
+      );
+      return;
+    }
+    setLoadingIA(true);
+    setIaError(null);
+    try {
+      const res = await axios.post("ai/generar-script", {
+        historias,
+        baseUrl: url,
+        tool: "k6",
+        vus: k6Vus,
+        duration,
+      });
+      if (res.data.script) {
+        setIaScript(res.data.script);
+      } else {
+        setIaError(res.data.error || "La IA no devolvió un script.");
+      }
+    } catch (err) {
+      console.error("Error generando script con IA:", err);
+      setIaError(
+        "No se pudo conectar con la IA. Verifica que el backend esté arriba.",
+      );
+    } finally {
+      setLoadingIA(false);
+    }
+  };
+
   const handleCopy = () => {
-    const code = tool === "k6" ? generateK6() : generateJMeter();
+    const code = getCurrentCode();
+    if (!code) return;
     navigator.clipboard.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDownload = () => {
-    const code = tool === "k6" ? generateK6() : generateJMeter();
-    
+    const code = getCurrentCode();
+    if (!code) return;
+
     // Obtenemos el nombre limpio
-    const projectName = getProjectName(); 
-    
-    // AQUI ESTA EL CAMBIO QUE PEDISTE:
-    const fileName =
-      tool === "k6" 
-        ? `script_${projectName}.js` 
-        : `test_plan_${projectName}.jmx`;
-        
-    const mimeType = tool === "k6" ? "text/javascript" : "application/xml";
+    const projectName = getProjectName();
+
+    // En modo IA siempre es k6 (.js); en manual depende de la herramienta.
+    const esK6 = metodoGen === "ia" || tool === "k6";
+    const fileName = esK6
+      ? `script_${projectName}.js`
+      : `test_plan_${projectName}.jmx`;
+
+    const mimeType = esK6 ? "text/javascript" : "application/xml";
 
     const blob = new Blob([code], { type: mimeType });
     const href = URL.createObjectURL(blob);
@@ -365,43 +416,66 @@ export default function () {
         </div>
 
         <div className="flex flex-col gap-2 items-end">
+          {/* Método de generación: Manual (plantilla) vs IA (historias de usuario) */}
           <div className="flex bg-slate-100 p-1 rounded-xl">
             <button
-              onClick={() => setTool("k6")}
-              className={`px-4 py-2 rounded-lg text-xs font-black transition-all ${tool === "k6" ? "bg-white text-orange-600 shadow-sm" : "text-slate-400"}`}
+              onClick={() => setMetodoGen("manual")}
+              className={`px-4 py-2 rounded-lg text-xs font-black transition-all ${metodoGen === "manual" ? "bg-white text-slate-700 shadow-sm" : "text-slate-400"}`}
             >
-              K6 (JS)
+              MANUAL
             </button>
             <button
-              onClick={() => setTool("jmeter")}
-              className={`px-4 py-2 rounded-lg text-xs font-black transition-all ${tool === "jmeter" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400"}`}
+              onClick={() => setMetodoGen("ia")}
+              className={`px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center gap-1 ${metodoGen === "ia" ? "bg-white text-purple-600 shadow-sm" : "text-slate-400"}`}
             >
-              JMETER (JMX)
+              <Sparkles size={12} /> CON IA
             </button>
           </div>
-          
-          {/* Toggle: Local vs Jenkins (aplica a k6 y JMeter) */}
-          {(
-             <div className="flex bg-slate-100 p-1 rounded-xl scale-90 origin-right">
-              <button
-                onClick={() => setModoEjecucion("local")}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${modoEjecucion === "local" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400"}`}
-              >
-                MODO LOCAL
-              </button>
-              <button
-                onClick={() => setModoEjecucion("jenkins")}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${modoEjecucion === "jenkins" ? "bg-white text-blue-600 shadow-sm" : "text-slate-400"}`}
-              >
-                PARA JENKINS
-              </button>
-            </div>
+
+          {metodoGen === "manual" ? (
+            <>
+              <div className="flex bg-slate-100 p-1 rounded-xl scale-90 origin-right">
+                <button
+                  onClick={() => setTool("k6")}
+                  className={`px-4 py-2 rounded-lg text-xs font-black transition-all ${tool === "k6" ? "bg-white text-orange-600 shadow-sm" : "text-slate-400"}`}
+                >
+                  K6 (JS)
+                </button>
+                <button
+                  onClick={() => setTool("jmeter")}
+                  className={`px-4 py-2 rounded-lg text-xs font-black transition-all ${tool === "jmeter" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400"}`}
+                >
+                  JMETER (JMX)
+                </button>
+              </div>
+
+              {/* Toggle: Local vs Jenkins (aplica a k6 y JMeter) */}
+              <div className="flex bg-slate-100 p-1 rounded-xl scale-90 origin-right">
+                <button
+                  onClick={() => setModoEjecucion("local")}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${modoEjecucion === "local" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400"}`}
+                >
+                  MODO LOCAL
+                </button>
+                <button
+                  onClick={() => setModoEjecucion("jenkins")}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${modoEjecucion === "jenkins" ? "bg-white text-blue-600 shadow-sm" : "text-slate-400"}`}
+                >
+                  PARA JENKINS
+                </button>
+              </div>
+            </>
+          ) : (
+            <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-3 py-1.5 rounded-xl flex items-center gap-1 border border-purple-100">
+              <Sparkles size={12} /> Genera k6 listo para Jenkins
+            </span>
           )}
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="space-y-6">
+          {metodoGen === "manual" ? (
           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
             <h3 className="font-bold text-slate-700 flex items-center gap-2 mb-2 text-sm uppercase tracking-wider">
               <Settings size={16} className="text-emerald-500" /> Parámetros
@@ -539,18 +613,113 @@ export default function () {
               )}
             </div>
           </div>
+          ) : (
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+            <h3 className="font-bold text-slate-700 flex items-center gap-2 mb-1 text-sm uppercase tracking-wider">
+              <Sparkles size={16} className="text-purple-500" /> Historias de
+              Usuario
+            </h3>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Describe los flujos en lenguaje natural. La IA generará un script
+              de k6 listo para ejecutar en Jenkins.
+            </p>
+
+            <textarea
+              value={historias}
+              onChange={(e) => setHistorias(e.target.value)}
+              rows={8}
+              placeholder={
+                "Ej:\n- Como usuario quiero iniciar sesión con email y contraseña.\n- Como usuario quiero consultar el listado de productos.\n- Como usuario quiero agregar un producto al carrito."
+              }
+              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 text-sm font-mono resize-none leading-relaxed"
+            />
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">
+                URL Base
+              </label>
+              <div className="relative">
+                <Globe
+                  className="absolute left-3 top-3 text-slate-300"
+                  size={16}
+                />
+                <input
+                  type="text"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 text-sm font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">
+                  VUs
+                </label>
+                <input
+                  type="number"
+                  value={k6Vus}
+                  onChange={(e) => setK6Vus(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">
+                  Duración (seg)
+                </label>
+                <input
+                  type="number"
+                  value={duration}
+                  onChange={(e) => setDuration(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                />
+              </div>
+            </div>
+
+            {iaError && (
+              <div className="text-[11px] text-red-600 bg-red-50 border border-red-100 p-2 rounded-lg">
+                {iaError}
+              </div>
+            )}
+
+            <button
+              onClick={generarConIA}
+              disabled={loadingIA}
+              className="w-full py-3 bg-purple-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-purple-500 transition-all shadow-lg shadow-purple-200 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {loadingIA ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" /> Generando...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={16} /> Generar con IA
+                </>
+              )}
+            </button>
+          </div>
+          )}
         </div>
 
         <div className="lg:col-span-2">
           <div className="bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border border-slate-800">
             <div className="flex items-center justify-between px-6 py-4 bg-slate-800/50 border-b border-slate-800">
               <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                {tool === "k6" ? (
-                  <span className="w-2 h-2 rounded-full bg-orange-500"></span>
-                ) : (
-                  <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-                )}
-                {tool === "k6" ? "script.js" : "test_plan.jmx"}
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    metodoGen === "ia"
+                      ? "bg-purple-500"
+                      : tool === "k6"
+                        ? "bg-orange-500"
+                        : "bg-indigo-500"
+                  }`}
+                ></span>
+                {metodoGen === "ia"
+                  ? "script_ia.js"
+                  : tool === "k6"
+                    ? "script.js"
+                    : "test_plan.jmx"}
               </span>
               <div className="flex gap-2">
                 <button
@@ -569,9 +738,26 @@ export default function () {
               </div>
             </div>
             <div className="p-6 overflow-x-auto h-[500px]">
-              <pre className="font-mono text-xs leading-relaxed text-emerald-400">
-                <code>{tool === "k6" ? generateK6() : generateJMeter()}</code>
-              </pre>
+              {loadingIA ? (
+                <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-3">
+                  <Loader2 size={32} className="animate-spin text-purple-400" />
+                  <p className="text-xs font-mono uppercase tracking-widest">
+                    La IA está escribiendo tu script...
+                  </p>
+                </div>
+              ) : metodoGen === "ia" && !iaScript ? (
+                <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-3 text-center px-8">
+                  <Sparkles size={32} className="text-slate-700" />
+                  <p className="text-xs font-mono uppercase tracking-widest leading-relaxed">
+                    Escribe tus historias de usuario
+                    <br />y pulsa "Generar con IA"
+                  </p>
+                </div>
+              ) : (
+                <pre className="font-mono text-xs leading-relaxed text-emerald-400">
+                  <code>{getCurrentCode()}</code>
+                </pre>
+              )}
             </div>
           </div>
         </div>
